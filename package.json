@@ -1,0 +1,30 @@
+{
+  "name": "mcp-image-gen",
+  "version": "1.0.0",
+  "description": "MCP server for Gemini image generation",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-image-gen": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "gemini",
+    "image-generation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

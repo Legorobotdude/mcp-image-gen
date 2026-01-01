@@ -1,0 +1,6 @@
+{
+  "model": "gemini-3-pro-image-preview",
+  "defaultAspectRatio": "1:1",
+  "defaultImageSize": "large",
+  "outputDirectory": "~/gemini_images"
+}
