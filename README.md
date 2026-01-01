@@ -24,7 +24,7 @@ A Model Context Protocol (MCP) server for generating images using Google's Gemin
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/mcp-image-gen.git
+git clone https://github.com/Legorobotdude/mcp-image-gen.git
 cd mcp-image-gen
 ```
 
