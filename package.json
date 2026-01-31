@@ -20,7 +20,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "@google/genai": "^1.39.0",
     "@modelcontextprotocol/sdk": "^1.0.4"
   },
   "devDependencies": {

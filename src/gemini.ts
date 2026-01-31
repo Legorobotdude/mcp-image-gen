@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { ImageGenerationParams, GeminiModel, AspectRatio, ImageSize } from './types.js';
@@ -12,12 +12,12 @@ interface GenerationResult {
 }
 
 export class GeminiImageGenerator {
-  private client: GoogleGenerativeAI;
+  private client: GoogleGenAI;
   private model: GeminiModel;
   private outputDirectory: string;
 
   constructor(apiKey: string, model: GeminiModel, outputDirectory: string) {
-    this.client = new GoogleGenerativeAI(apiKey);
+    this.client = new GoogleGenAI({ apiKey });
     this.model = model;
     this.outputDirectory = outputDirectory;
 
@@ -27,7 +27,7 @@ export class GeminiImageGenerator {
     }
   }
 
-  private getImageSizeForGemini(size: ImageSize): string {
+  private getImageSizeForGemini(size: ImageSize): '1K' | '2K' | '4K' {
     // Gemini API requires "1K", "2K", or "4K" (uppercase K)
     switch (size) {
       case 'small':
@@ -48,36 +48,32 @@ export class GeminiImageGenerator {
       negativePrompt
     } = params;
 
-    const model = this.client.getGenerativeModel({ model: this.model });
-
-    // Build the generation config
-    const config: any = {
-      responseModalities: ['IMAGE'],
-    };
-
-    // Only Gemini 3 Pro supports detailed image configuration
-    if (this.model === 'gemini-3-pro-image-preview') {
-      config.imageConfig = {
-        aspectRatio,
-        imageSize: this.getImageSizeForGemini(imageSize),
-      };
-    }
-
     // Build contents
     let contentText = prompt;
     if (negativePrompt) {
       contentText += `\nNegative prompt: ${negativePrompt}`;
     }
 
-    const result = await model.generateContent(contentText, config);
-
-    const response = result.response;
+    // Use the new @google/genai SDK API
+    const response = await this.client.models.generateContent({
+      model: this.model,
+      contents: contentText,
+      config: {
+        responseModalities: ['IMAGE'],
+        imageConfig: {
+          aspectRatio,
+          imageSize: this.getImageSizeForGemini(imageSize),
+        },
+      },
+    });
 
     // Extract image from response
-    for (const candidate of response.candidates || []) {
-      for (const part of candidate.content.parts) {
+    const candidates = response.candidates || [];
+    for (const candidate of candidates) {
+      const parts = candidate.content?.parts || [];
+      for (const part of parts) {
         if (part.inlineData) {
-          const buffer = Buffer.from(part.inlineData.data, 'base64');
+          const buffer = Buffer.from(part.inlineData.data as string, 'base64');
           const timestamp = Date.now();
           const sanitizedPrompt = prompt
             .substring(0, 50)
