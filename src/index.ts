@@ -69,6 +69,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               description: 'Optional. Describe what you do NOT want in the image.',
             },
+            sourceImages: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Optional. Array of absolute file paths to source/reference images for image editing, style transfer, or character consistency. Supports png, jpg, jpeg, gif, webp. Max 14 images (Gemini 3 Pro only).',
+            },
           },
           required: ['prompt'],
         },
@@ -93,6 +98,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         aspectRatio: (args.aspectRatio as AspectRatio) || config.defaultAspectRatio,
         imageSize: (args.imageSize as ImageSize) || config.defaultImageSize,
         negativePrompt: args.negativePrompt as string | undefined,
+        sourceImages: args.sourceImages as string[] | undefined,
       };
 
       const result = await generator.generateImage(finalParams);

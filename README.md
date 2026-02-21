@@ -5,6 +5,7 @@ A Model Context Protocol (MCP) server for generating images using Google's Gemin
 ## Features
 
 - 🎨 Generate high-quality images from text prompts using Gemini AI
+- 🖼️ Source/reference image support for editing, style transfer, and character consistency (up to 14 images)
 - 📐 Customizable aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4)
 - 🔧 Configurable image sizes (small to 4K resolution)
 - ⚙️ Flexible configuration via JSON file
@@ -104,6 +105,7 @@ Generate an image from a text prompt.
 - **aspectRatio** (optional): Aspect ratio - `"1:1"`, `"2:3"`, `"3:2"`, `"3:4"`, `"4:3"`, `"4:5"`, `"5:4"`, `"9:16"`, `"16:9"`, `"21:9"`
 - **imageSize** (optional): Resolution - `"small"` (1K), `"medium"` (2K), `"large"` (2K), `"xlarge"` (4K)
 - **negativePrompt** (optional): Describe what you DON'T want in the image
+- **sourceImages** (optional): Array of absolute file paths to source/reference images (png, jpg, jpeg, gif, webp). Max 14 images. Gemini 3 Pro only.
 
 ### Example Usage in Claude
 
@@ -117,6 +119,14 @@ Create a 16:9 image of a futuristic city skyline at night in xlarge size
 
 ```
 Generate a portrait of a wise old wizard with a long beard, aspect ratio 3:4, medium size
+```
+
+```
+Edit this photo to make it look like a watercolor painting (with sourceImages: ["/path/to/photo.jpg"])
+```
+
+```
+Create a group photo of these people at a beach party (with sourceImages: ["/path/to/person1.jpg", "/path/to/person2.jpg"])
 ```
 
 ## Response Format

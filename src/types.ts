@@ -16,4 +16,5 @@ export interface ImageGenerationParams {
   aspectRatio?: AspectRatio;
   imageSize?: ImageSize;
   negativePrompt?: string;
+  sourceImages?: string[];
 }
