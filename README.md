@@ -19,6 +19,7 @@ A Model Context Protocol (MCP) server for generating images using Google's Gemin
 ## Models Supported
 
 - **gemini-3-pro-image-preview** (Default): Professional-grade, supports up to 4K resolution
+- **gemini-3.1-flash-image-preview**: High-efficiency counterpart to Gemini 3 Pro, optimized for speed and high-volume use; supports up to 4K resolution
 - **gemini-2.5-flash-image**: Optimized for speed, generates 1024px resolution
 
 ## Installation
@@ -65,13 +66,13 @@ Create a `config.json` file in the project root to customize defaults:
 
 **Available Options:**
 
-- `model`: `"gemini-3-pro-image-preview"` or `"gemini-2.5-flash-image"`
+- `model`: `"gemini-3-pro-image-preview"` (default), `"gemini-3.1-flash-image-preview"`, or `"gemini-2.5-flash-image"`
 - `defaultAspectRatio`: `"1:1"`, `"16:9"`, `"9:16"`, `"4:3"`, or `"3:4"`
 - `defaultImageSize`:
   - `"small"` (1K - 1024px)
   - `"medium"` (2K - 2048px)
   - `"large"` (2K - 2048px)
-  - `"xlarge"` (4K - 4096px - only for gemini-3-pro-image-preview)
+  - `"xlarge"` (4K - 4096px - only for gemini-3.1-flash-image-preview and gemini-3-pro-image-preview)
 - `outputDirectory`: Path where generated images will be saved (default: `~/gemini_images`, can use absolute paths or `~` for home directory)
 
 ## Usage with Claude Desktop
@@ -102,6 +103,7 @@ Generate an image from a text prompt.
 ### Parameters
 
 - **prompt** (required): Text description of the image to generate
+- **model** (optional): Model to use - `"gemini-3-pro-image-preview"`, `"gemini-3.1-flash-image-preview"`, or `"gemini-2.5-flash-image"`. Defaults to server config.
 - **aspectRatio** (optional): Aspect ratio - `"1:1"`, `"2:3"`, `"3:2"`, `"3:4"`, `"4:3"`, `"4:5"`, `"5:4"`, `"9:16"`, `"16:9"`, `"21:9"`
 - **imageSize** (optional): Resolution - `"small"` (1K), `"medium"` (2K), `"large"` (2K), `"xlarge"` (4K)
 - **negativePrompt** (optional): Describe what you DON'T want in the image
@@ -148,7 +150,8 @@ The tool returns a JSON response with:
 ## Image Quality Notes
 
 - All generated images include a SynthID watermark (Google's digital watermark)
-- **gemini-3-pro-image-preview**: Best for high-quality, detailed images up to 4K
+- **gemini-3-pro-image-preview** (default): Best for high-quality, detailed images up to 4K
+- **gemini-3.1-flash-image-preview**: Best for speed and high-volume use, supports up to 4K
 - **gemini-2.5-flash-image**: Best for quick generation, fixed at 1024px resolution
 
 ## Development
@@ -174,7 +177,7 @@ Make sure you've set the `GEMINI_API_KEY` environment variable or added it to yo
 - Ensure the output directory is writable
 
 ### Size options not working
-The `gemini-2.5-flash-image` model only supports 1024px resolution regardless of the size parameter. Use `gemini-3-pro-image-preview` for higher resolutions.
+The `gemini-2.5-flash-image` model only supports 1024px resolution regardless of the size parameter. Use `gemini-3-pro-image-preview` or `gemini-3.1-flash-image-preview` for higher resolutions.
 
 ## License
 

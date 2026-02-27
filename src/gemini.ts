@@ -102,11 +102,13 @@ export class GeminiImageGenerator {
   async generateImage(params: ImageGenerationParams): Promise<GenerationResult> {
     const {
       prompt,
+      model: modelOverride,
       aspectRatio = '1:1',
       imageSize = 'large',
       negativePrompt,
       sourceImages
     } = params;
+    const model = modelOverride ?? this.model;
 
     // Build contents
     let contentText = prompt;
@@ -122,7 +124,7 @@ export class GeminiImageGenerator {
 
     // Use the new @google/genai SDK API
     const response = await this.client.models.generateContent({
-      model: this.model,
+      model,
       contents,
       config: {
         responseModalities: ['IMAGE'],
@@ -152,7 +154,7 @@ export class GeminiImageGenerator {
           return {
             imagePath: filepath,
             prompt,
-            model: this.model,
+            model,
             aspectRatio,
             imageSize,
           };

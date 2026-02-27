@@ -8,7 +8,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { GeminiImageGenerator } from './gemini.js';
 import { loadConfig } from './config.js';
-import type { ImageGenerationParams, AspectRatio, ImageSize } from './types.js';
+import type { ImageGenerationParams, AspectRatio, ImageSize, GeminiModel } from './types.js';
 
 const config = loadConfig();
 
@@ -53,6 +53,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               description: 'Text description of the image to generate. Be detailed and specific for best results.',
             },
+            model: {
+              type: 'string',
+              enum: ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'gemini-3.1-flash-image-preview'],
+              description: `Image model to use. Default: ${config.model}`,
+            },
             aspectRatio: {
               type: 'string',
               enum: ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
@@ -95,6 +100,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Apply defaults from config
       const finalParams: ImageGenerationParams = {
         prompt: args.prompt,
+        model: (args.model as GeminiModel) || undefined,
         aspectRatio: (args.aspectRatio as AspectRatio) || config.defaultAspectRatio,
         imageSize: (args.imageSize as ImageSize) || config.defaultImageSize,
         negativePrompt: args.negativePrompt as string | undefined,

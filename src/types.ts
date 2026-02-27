@@ -1,4 +1,7 @@
-export type GeminiModel = 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview';
+export type GeminiModel =
+  | 'gemini-2.5-flash-image'
+  | 'gemini-3-pro-image-preview'
+  | 'gemini-3.1-flash-image-preview';
 
 export type AspectRatio = '1:1' | '2:3' | '3:2' | '3:4' | '4:3' | '4:5' | '5:4' | '9:16' | '16:9' | '21:9';
 
@@ -13,6 +16,7 @@ export interface ServerConfig {
 
 export interface ImageGenerationParams {
   prompt: string;
+  model?: GeminiModel;
   aspectRatio?: AspectRatio;
   imageSize?: ImageSize;
   negativePrompt?: string;
