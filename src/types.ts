@@ -10,7 +10,9 @@ export type OpenAIModel =
   | 'gpt-image-1'
   | 'gpt-image-1-mini';
 
-export type Provider = 'gemini' | 'openai';
+export type XAIModel = 'grok-imagine-image' | 'grok-imagine-image-quality';
+
+export type Provider = 'gemini' | 'openai' | 'xai';
 
 export type AspectRatio = '1:1' | '2:3' | '3:2' | '3:4' | '4:3' | '4:5' | '5:4' | '9:16' | '16:9' | '21:9';
 
@@ -22,9 +24,9 @@ export type OpenAIQuality = 'auto' | 'low' | 'medium' | 'high';
 
 export type OpenAIModeration = 'auto' | 'low';
 
-export type ImageModel = GeminiModel | OpenAIModel;
+export type ImageModel = GeminiModel | OpenAIModel | XAIModel;
 
-export const PROVIDERS: Provider[] = ['gemini', 'openai'];
+export const PROVIDERS: Provider[] = ['gemini', 'openai', 'xai'];
 
 export const GEMINI_MODELS: GeminiModel[] = [
   'gemini-2.5-flash-image',
@@ -40,7 +42,9 @@ export const OPENAI_MODELS: OpenAIModel[] = [
   'gpt-image-1-mini',
 ];
 
-export const ALL_MODELS: ImageModel[] = [...GEMINI_MODELS, ...OPENAI_MODELS];
+export const XAI_MODELS: XAIModel[] = ['grok-imagine-image', 'grok-imagine-image-quality'];
+
+export const ALL_MODELS: ImageModel[] = [...GEMINI_MODELS, ...OPENAI_MODELS, ...XAI_MODELS];
 
 export function isGeminiModel(model: string): model is GeminiModel {
   return GEMINI_MODELS.includes(model as GeminiModel);
@@ -50,8 +54,14 @@ export function isOpenAIModel(model: string): model is OpenAIModel {
   return OPENAI_MODELS.includes(model as OpenAIModel);
 }
 
+export function isXAIModel(model: string): model is XAIModel {
+  return XAI_MODELS.includes(model as XAIModel);
+}
+
 export function getProviderForModel(model: ImageModel): Provider {
-  return isGeminiModel(model) ? 'gemini' : 'openai';
+  if (isGeminiModel(model)) return 'gemini';
+  if (isOpenAIModel(model)) return 'openai';
+  return 'xai';
 }
 
 export function providerSupportsModel(provider: Provider, model: ImageModel): boolean {

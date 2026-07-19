@@ -36,3 +36,30 @@ export function savePngWithMetadata(params: {
 
   return filepath;
 }
+
+// PNG metadata embedding would corrupt non-PNG formats, so those are saved as-is.
+export function saveGeneratedImage(params: {
+  outputDirectory: string;
+  prompt: string;
+  imageBuffer: Buffer;
+  metadata: Record<string, string>;
+  mimeType?: string;
+}): string {
+  const { outputDirectory, prompt, imageBuffer, mimeType } = params;
+
+  if (!mimeType || mimeType === 'image/png') {
+    return savePngWithMetadata(params);
+  }
+
+  ensureOutputDirectory(outputDirectory);
+
+  const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1];
+  const filepath = join(
+    outputDirectory,
+    `${Date.now()}_${sanitizePromptForFilename(prompt)}.${extension}`
+  );
+
+  writeFileSync(filepath, imageBuffer);
+
+  return filepath;
+}

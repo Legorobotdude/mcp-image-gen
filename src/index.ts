@@ -8,13 +8,16 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { GeminiImageGenerator } from './gemini.js';
 import { OpenAIImageGenerator } from './openai.js';
+import { hasXAICredentials, XAIImageGenerator } from './xai.js';
 import { loadConfig } from './config.js';
 import {
   ALL_MODELS,
   getProviderForModel,
   isGeminiModel,
   isOpenAIModel,
+  isXAIModel,
   OPENAI_MODELS,
+  XAI_MODELS,
   type AspectRatio,
   type ImageGenerationParams,
   type ImageModel,
@@ -26,28 +29,27 @@ import {
 } from './types.js';
 
 function getFallbackConfig(config: ReturnType<typeof loadConfig>): ReturnType<typeof loadConfig> {
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-  const provider = getProviderForModel(config.model);
+  const available: Record<Provider, boolean> = {
+    gemini: Boolean(process.env.GEMINI_API_KEY),
+    openai: Boolean(process.env.OPENAI_API_KEY),
+    xai: hasXAICredentials(),
+  };
 
-  if (!geminiApiKey && !openaiApiKey) {
+  if (!available.gemini && !available.openai && !available.xai) {
     console.error(
-      'Error: set GEMINI_API_KEY and/or OPENAI_API_KEY. At least one provider API key is required.'
+      'Error: set GEMINI_API_KEY, OPENAI_API_KEY, or XAI_API_KEY (or log in with the Grok CLI). At least one provider is required.'
     );
     process.exit(1);
   }
 
-  if (provider === 'gemini' && !geminiApiKey && openaiApiKey) {
+  if (!available[getProviderForModel(config.model)]) {
     return {
       ...config,
-      model: 'gpt-image-1.5',
-    };
-  }
-
-  if (provider === 'openai' && !openaiApiKey && geminiApiKey) {
-    return {
-      ...config,
-      model: 'gemini-3-pro-image-preview',
+      model: available.gemini
+        ? 'gemini-3-pro-image-preview'
+        : available.openai
+          ? 'gpt-image-1.5'
+          : 'grok-imagine-image',
     };
   }
 
@@ -67,6 +69,10 @@ const openaiGenerator = openaiApiKey
   ? new OpenAIImageGenerator(openaiApiKey, OPENAI_MODELS[0], config.outputDirectory)
   : null;
 
+const xaiGenerator = hasXAICredentials()
+  ? new XAIImageGenerator(XAI_MODELS[0], config.outputDirectory)
+  : null;
+
 function resolveProviderAndModel(args: Record<string, unknown>): {
   provider: Provider;
   model: ImageModel;
@@ -84,7 +90,7 @@ function resolveProviderAndModel(args: Record<string, unknown>): {
 }
 
 function buildToolDescription(): string {
-  return `Generate an image using Google Gemini or OpenAI image models. Provider is inferred from the selected model. Default model: ${config.model}. Images are saved to ${config.outputDirectory}.`;
+  return `Generate an image using Google Gemini, OpenAI, or xAI Grok image models. Provider is inferred from the selected model. Default model: ${config.model}. Images are saved to ${config.outputDirectory}.`;
 }
 
 if (getProviderForModel(config.model) === 'gemini' && !geminiGenerator) {
@@ -147,7 +153,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             sourceImages: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Optional. Array of absolute file paths to source/reference images for image editing, style transfer, or character consistency. Gemini supports png, jpg, jpeg, gif, webp (max 14). OpenAI supports png, jpg, jpeg, webp (max 16).',
+              description: 'Optional. Array of absolute file paths to source/reference images for image editing, style transfer, or character consistency. Gemini supports png, jpg, jpeg, gif, webp (max 14). OpenAI supports png, jpg, jpeg, webp (max 16). xAI Grok supports png, jpg, jpeg, webp (max 3).',
             },
           },
           required: ['prompt'],
@@ -182,26 +188,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         moderation: 'low',
       };
 
-      const result =
-        provider === 'gemini'
-          ? await (() => {
-              if (!geminiGenerator || !isGeminiModel(model)) {
-                throw new Error(
-                  'GEMINI_API_KEY is required to use Gemini image generation models.'
-                );
-              }
+      const result = await (() => {
+        if (provider === 'gemini') {
+          if (!geminiGenerator || !isGeminiModel(model)) {
+            throw new Error('GEMINI_API_KEY is required to use Gemini image generation models.');
+          }
+          return geminiGenerator.generateImage(finalParams);
+        }
 
-              return geminiGenerator.generateImage(finalParams);
-            })()
-          : await (() => {
-              if (!openaiGenerator || !isOpenAIModel(model)) {
-                throw new Error(
-                  'OPENAI_API_KEY is required to use OpenAI image generation models.'
-                );
-              }
+        if (provider === 'xai') {
+          if (!xaiGenerator || !isXAIModel(model)) {
+            throw new Error(
+              'XAI_API_KEY or a Grok CLI login is required to use Grok image generation models.'
+            );
+          }
+          return xaiGenerator.generateImage(finalParams);
+        }
 
-              return openaiGenerator.generateImage(finalParams);
-            })();
+        if (!openaiGenerator || !isOpenAIModel(model)) {
+          throw new Error('OPENAI_API_KEY is required to use OpenAI image generation models.');
+        }
+        return openaiGenerator.generateImage(finalParams);
+      })();
 
       return {
         content: [
