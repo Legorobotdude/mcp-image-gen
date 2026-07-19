@@ -1,7 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
-import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
-import { join, extname } from 'path';
-import type { ImageGenerationParams, GeminiModel, AspectRatio, ImageSize } from './types.js';
+import { readFileSync, existsSync } from 'fs';
+import { extname } from 'path';
+import { ensureOutputDirectory, savePngWithMetadata } from './image-output.js';
+import type { ImageGenerationParams, ImageGenerationResult, GeminiModel, ImageSize } from './types.js';
 
 const MAX_SOURCE_IMAGES = 14;
 
@@ -13,14 +14,6 @@ const SUPPORTED_MIME_TYPES: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
-interface GenerationResult {
-  imagePath: string;
-  prompt: string;
-  model: string;
-  aspectRatio: AspectRatio;
-  imageSize: ImageSize;
-}
-
 export class GeminiImageGenerator {
   private client: GoogleGenAI;
   private model: GeminiModel;
@@ -31,10 +24,7 @@ export class GeminiImageGenerator {
     this.model = model;
     this.outputDirectory = outputDirectory;
 
-    // Ensure output directory exists
-    if (!existsSync(this.outputDirectory)) {
-      mkdirSync(this.outputDirectory, { recursive: true });
-    }
+    ensureOutputDirectory(this.outputDirectory);
   }
 
   private getImageSizeForGemini(size: ImageSize): '1K' | '2K' | '4K' {
@@ -47,6 +37,8 @@ export class GeminiImageGenerator {
         return '2K';
       case 'xlarge':
         return '4K';
+      default:
+        throw new Error(`Unsupported image size for Gemini: ${size}`);
     }
   }
 
@@ -99,7 +91,7 @@ export class GeminiImageGenerator {
     return parts;
   }
 
-  async generateImage(params: ImageGenerationParams): Promise<GenerationResult> {
+  async generateImage(params: ImageGenerationParams): Promise<ImageGenerationResult> {
     const {
       prompt,
       model: modelOverride,
@@ -141,17 +133,25 @@ export class GeminiImageGenerator {
       const parts = candidate.content?.parts || [];
       for (const part of parts) {
         if (part.inlineData) {
-          const buffer = Buffer.from(part.inlineData.data as string, 'base64');
-          const timestamp = Date.now();
-          const sanitizedPrompt = prompt
-            .substring(0, 50)
-            .replace(/[^a-zA-Z0-9]/g, '_');
-          const filename = `${timestamp}_${sanitizedPrompt}.png`;
-          const filepath = join(this.outputDirectory, filename);
-
-          writeFileSync(filepath, buffer);
+          const rawBuffer = Buffer.from(part.inlineData.data as string, 'base64');
+          const filepath = savePngWithMetadata({
+            outputDirectory: this.outputDirectory,
+            prompt,
+            imageBuffer: rawBuffer,
+            metadata: {
+              Software: 'mcp-image-gen',
+              Source: 'Google Gemini AI',
+              Provider: 'gemini',
+              Description: prompt,
+              Model: model,
+              AspectRatio: aspectRatio,
+              ImageSize: imageSize,
+              ...(negativePrompt ? { NegativePrompt: negativePrompt } : {}),
+            },
+          });
 
           return {
+            provider: 'gemini',
             imagePath: filepath,
             prompt,
             model,

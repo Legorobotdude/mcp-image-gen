@@ -7,24 +7,94 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { GeminiImageGenerator } from './gemini.js';
+import { OpenAIImageGenerator } from './openai.js';
 import { loadConfig } from './config.js';
-import type { ImageGenerationParams, AspectRatio, ImageSize, GeminiModel } from './types.js';
+import {
+  ALL_MODELS,
+  getProviderForModel,
+  isGeminiModel,
+  isOpenAIModel,
+  OPENAI_MODELS,
+  type AspectRatio,
+  type ImageGenerationParams,
+  type ImageModel,
+  type ImageSize,
+  type OpenAIBackground,
+  type OpenAIQuality,
+  type OpenAIModeration,
+  type Provider,
+} from './types.js';
 
-const config = loadConfig();
+function getFallbackConfig(config: ReturnType<typeof loadConfig>): ReturnType<typeof loadConfig> {
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const openaiApiKey = process.env.OPENAI_API_KEY;
+  const provider = getProviderForModel(config.model);
 
-// Validate API key
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  console.error('Error: GEMINI_API_KEY environment variable is required');
-  process.exit(1);
+  if (!geminiApiKey && !openaiApiKey) {
+    console.error(
+      'Error: set GEMINI_API_KEY and/or OPENAI_API_KEY. At least one provider API key is required.'
+    );
+    process.exit(1);
+  }
+
+  if (provider === 'gemini' && !geminiApiKey && openaiApiKey) {
+    return {
+      ...config,
+      model: 'gpt-image-1.5',
+    };
+  }
+
+  if (provider === 'openai' && !openaiApiKey && geminiApiKey) {
+    return {
+      ...config,
+      model: 'gemini-3-pro-image-preview',
+    };
+  }
+
+  return config;
 }
 
-// Initialize Gemini client
-const generator = new GeminiImageGenerator(
-  apiKey,
-  config.model,
-  config.outputDirectory
-);
+const config = getFallbackConfig(loadConfig());
+
+const geminiApiKey = process.env.GEMINI_API_KEY;
+const openaiApiKey = process.env.OPENAI_API_KEY;
+
+const geminiGenerator = geminiApiKey
+  ? new GeminiImageGenerator(geminiApiKey, 'gemini-3-pro-image-preview', config.outputDirectory)
+  : null;
+
+const openaiGenerator = openaiApiKey
+  ? new OpenAIImageGenerator(openaiApiKey, OPENAI_MODELS[0], config.outputDirectory)
+  : null;
+
+function resolveProviderAndModel(args: Record<string, unknown>): {
+  provider: Provider;
+  model: ImageModel;
+} {
+  const requestedModel = typeof args.model === 'string' ? args.model : config.model;
+
+  if (!ALL_MODELS.includes(requestedModel as ImageModel)) {
+    throw new Error(`Unsupported model: ${requestedModel}`);
+  }
+
+  const provider = getProviderForModel(requestedModel as ImageModel);
+  const model = requestedModel as ImageModel;
+
+  return { provider, model };
+}
+
+function buildToolDescription(): string {
+  return `Generate an image using Google Gemini or OpenAI image models. Provider is inferred from the selected model. Default model: ${config.model}. Images are saved to ${config.outputDirectory}.`;
+}
+
+if (getProviderForModel(config.model) === 'gemini' && !geminiGenerator) {
+  console.error('Default config targets Gemini but GEMINI_API_KEY is not set.');
+}
+
+if (getProviderForModel(config.model) === 'openai' && !openaiGenerator) {
+  console.error('Default config targets OpenAI but OPENAI_API_KEY is not set.');
+  process.exit(1);
+}
 
 // Create MCP server
 const server = new Server(
@@ -45,7 +115,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: 'generate_image',
-        description: `Generate an image using Google Gemini AI (${config.model}). Creates high-quality images from text prompts with customizable aspect ratios and sizes. Images are saved to ${config.outputDirectory}.`,
+        description: buildToolDescription(),
         inputSchema: {
           type: 'object',
           properties: {
@@ -55,7 +125,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             model: {
               type: 'string',
-              enum: ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'gemini-3.1-flash-image-preview'],
+              enum: ALL_MODELS,
               description: `Image model to use. Default: ${config.model}`,
             },
             aspectRatio: {
@@ -77,7 +147,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             sourceImages: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Optional. Array of absolute file paths to source/reference images for image editing, style transfer, or character consistency. Supports png, jpg, jpeg, gif, webp. Max 14 images (Gemini 3 Pro only).',
+              description: 'Optional. Array of absolute file paths to source/reference images for image editing, style transfer, or character consistency. Gemini supports png, jpg, jpeg, gif, webp (max 14). OpenAI supports png, jpg, jpeg, webp (max 16).',
             },
           },
           required: ['prompt'],
@@ -97,17 +167,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error('Invalid arguments: prompt is required and must be a string');
       }
 
+      const { provider, model } = resolveProviderAndModel(args as Record<string, unknown>);
+
       // Apply defaults from config
       const finalParams: ImageGenerationParams = {
         prompt: args.prompt,
-        model: (args.model as GeminiModel) || undefined,
+        model,
         aspectRatio: (args.aspectRatio as AspectRatio) || config.defaultAspectRatio,
         imageSize: (args.imageSize as ImageSize) || config.defaultImageSize,
         negativePrompt: args.negativePrompt as string | undefined,
         sourceImages: args.sourceImages as string[] | undefined,
+        quality: (args.quality as OpenAIQuality) || 'auto',
+        background: (args.background as OpenAIBackground) || 'auto',
+        moderation: 'low',
       };
 
-      const result = await generator.generateImage(finalParams);
+      const result =
+        provider === 'gemini'
+          ? await (() => {
+              if (!geminiGenerator || !isGeminiModel(model)) {
+                throw new Error(
+                  'GEMINI_API_KEY is required to use Gemini image generation models.'
+                );
+              }
+
+              return geminiGenerator.generateImage(finalParams);
+            })()
+          : await (() => {
+              if (!openaiGenerator || !isOpenAIModel(model)) {
+                throw new Error(
+                  'OPENAI_API_KEY is required to use OpenAI image generation models.'
+                );
+              }
+
+              return openaiGenerator.generateImage(finalParams);
+            })();
 
       return {
         content: [
@@ -116,6 +210,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: JSON.stringify(
               {
                 success: true,
+                provider: result.provider,
                 imagePath: result.imagePath,
                 prompt: result.prompt,
                 model: result.model,
@@ -158,7 +253,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('MCP Image Gen Server running on stdio');
-  console.error(`Model: ${config.model}`);
+  console.error(`Default Model: ${config.model}`);
   console.error(`Output Directory: ${config.outputDirectory}`);
 }
 

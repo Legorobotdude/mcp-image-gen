@@ -1,26 +1,29 @@
 # MCP Image Gen
 
-A Model Context Protocol (MCP) server for generating images using Google's Gemini AI models.
+A Model Context Protocol (MCP) server for generating images using Google's Gemini AI models and OpenAI's GPT Image models.
 
 ## Features
 
-- 🎨 Generate high-quality images from text prompts using Gemini AI
-- 🖼️ Source/reference image support for editing, style transfer, and character consistency (up to 14 images)
+- 🎨 Generate high-quality images from text prompts using Gemini and OpenAI models
+- 🖼️ Source/reference image support for editing, style transfer, and character consistency
 - 📐 Customizable aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4)
-- 🔧 Configurable image sizes (small to 4K resolution)
+- 🔧 Configurable image sizes with provider-aware mapping
+- 🤖 OpenAI support for GPT Image models, including `gpt-image-2`, `gpt-image-1.5`, and `chatgpt-image-latest`
+- 🧩 Provider is inferred automatically from the selected model
 - ⚙️ Flexible configuration via JSON file
 - 💾 Automatic local image saving with organized filenames (saves to ~/gemini_images by default)
 - 🚀 Built on the MCP SDK for seamless integration
-
-## ⚠️ Known Issues
-
-- **Aspect ratio and image size parameters may not be working correctly** - Images are currently being generated in landscape format regardless of the specified aspect ratio. This is being investigated. The API calls appear correct, but the Gemini API may not be respecting the configuration parameters as expected.
 
 ## Models Supported
 
 - **gemini-3-pro-image-preview** (Default): Professional-grade, supports up to 4K resolution
 - **gemini-3.1-flash-image-preview**: High-efficiency counterpart to Gemini 3 Pro, optimized for speed and high-volume use; supports up to 4K resolution
 - **gemini-2.5-flash-image**: Optimized for speed, generates 1024px resolution
+- **gpt-image-2**: Experimental OpenAI model string accepted by this server
+- **gpt-image-1.5**: Latest documented dedicated OpenAI image generation model
+- **chatgpt-image-latest**: The image model currently used in ChatGPT
+- **gpt-image-1**: Previous GPT Image generation model
+- **gpt-image-1-mini**: Lower-cost GPT Image variant
 
 ## Installation
 
@@ -44,12 +47,14 @@ pnpm build
 
 ### Environment Variables
 
-Set your Gemini API key:
+Set one or both provider API keys:
 ```bash
 export GEMINI_API_KEY=your_api_key_here
+export OPENAI_API_KEY=your_api_key_here
 ```
 
 Get your API key from [Google AI Studio](https://aistudio.google.com/apikey).
+Get your OpenAI API key from [OpenAI](https://platform.openai.com/api-keys).
 
 ### Config File (Optional)
 
@@ -66,7 +71,9 @@ Create a `config.json` file in the project root to customize defaults:
 
 **Available Options:**
 
-- `model`: `"gemini-3-pro-image-preview"` (default), `"gemini-3.1-flash-image-preview"`, or `"gemini-2.5-flash-image"`
+- `model`:
+  - Gemini: `"gemini-3-pro-image-preview"` (default), `"gemini-3.1-flash-image-preview"`, `"gemini-2.5-flash-image"`
+  - OpenAI: `"gpt-image-2"`, `"gpt-image-1.5"`, `"chatgpt-image-latest"`, `"gpt-image-1"`, `"gpt-image-1-mini"`
 - `defaultAspectRatio`: `"1:1"`, `"16:9"`, `"9:16"`, `"4:3"`, or `"3:4"`
 - `defaultImageSize`:
   - `"small"` (1K - 1024px)
@@ -89,7 +96,8 @@ Add to your Claude Desktop configuration file:
       "command": "node",
       "args": ["/absolute/path/to/mcp-image-gen/dist/index.js"],
       "env": {
-        "GEMINI_API_KEY": "your_api_key_here"
+        "GEMINI_API_KEY": "your_api_key_here",
+        "OPENAI_API_KEY": "your_api_key_here"
       }
     }
   }
@@ -103,11 +111,15 @@ Generate an image from a text prompt.
 ### Parameters
 
 - **prompt** (required): Text description of the image to generate
-- **model** (optional): Model to use - `"gemini-3-pro-image-preview"`, `"gemini-3.1-flash-image-preview"`, or `"gemini-2.5-flash-image"`. Defaults to server config.
+- **model** (optional): Gemini or OpenAI image model. Provider is inferred automatically from the model. Defaults to server config.
 - **aspectRatio** (optional): Aspect ratio - `"1:1"`, `"2:3"`, `"3:2"`, `"3:4"`, `"4:3"`, `"4:5"`, `"5:4"`, `"9:16"`, `"16:9"`, `"21:9"`
 - **imageSize** (optional): Resolution - `"small"` (1K), `"medium"` (2K), `"large"` (2K), `"xlarge"` (4K)
 - **negativePrompt** (optional): Describe what you DON'T want in the image
-- **sourceImages** (optional): Array of absolute file paths to source/reference images (png, jpg, jpeg, gif, webp). Max 14 images. Gemini 3 Pro only.
+- **sourceImages** (optional): Array of absolute file paths to source/reference images
+  - Gemini: png, jpg, jpeg, gif, webp; max 14 images
+  - OpenAI: png, jpg, jpeg, webp; max 16 images
+
+The server still accepts OpenAI-specific `quality` and `background` arguments for direct callers, but they are no longer advertised in the MCP schema. OpenAI moderation is fixed to `low`.
 
 ### Example Usage in Claude
 
@@ -116,11 +128,11 @@ Generate an image of a serene mountain landscape at sunset with vibrant colors
 ```
 
 ```
-Create a 16:9 image of a futuristic city skyline at night in xlarge size
+Create a 16:9 image of a futuristic city skyline at night in xlarge size with Gemini
 ```
 
 ```
-Generate a portrait of a wise old wizard with a long beard, aspect ratio 3:4, medium size
+Generate a portrait of a wise old wizard with a long beard, aspect ratio 3:4, medium size, using model gpt-image-1.5
 ```
 
 ```
@@ -128,7 +140,7 @@ Edit this photo to make it look like a watercolor painting (with sourceImages: [
 ```
 
 ```
-Create a group photo of these people at a beach party (with sourceImages: ["/path/to/person1.jpg", "/path/to/person2.jpg"])
+Create a product cutout using model chatgpt-image-latest
 ```
 
 ## Response Format
@@ -139,8 +151,9 @@ The tool returns a JSON response with:
 {
   "success": true,
   "imagePath": "/Users/yourusername/gemini_images/1234567890_serene_mountain_landscape.png",
+  "provider": "openai",
   "prompt": "serene mountain landscape at sunset",
-  "model": "gemini-3-pro-image-preview",
+  "model": "gpt-image-1.5",
   "aspectRatio": "1:1",
   "imageSize": "large",
   "message": "Image generated successfully and saved to: /Users/yourusername/gemini_images/1234567890_serene_mountain_landscape.png"
@@ -153,6 +166,10 @@ The tool returns a JSON response with:
 - **gemini-3-pro-image-preview** (default): Best for high-quality, detailed images up to 4K
 - **gemini-3.1-flash-image-preview**: Best for speed and high-volume use, supports up to 4K
 - **gemini-2.5-flash-image**: Best for quick generation, fixed at 1024px resolution
+- **gpt-image-1.5**: Best OpenAI image quality and instruction following
+- **chatgpt-image-latest**: Tracks the image model currently used in ChatGPT
+- OpenAI GPT Image models support square, landscape, and portrait sizes. Non-square aspect ratios are mapped to the closest supported OpenAI size.
+- OpenAI moderation is hardcoded to the least restrictive documented setting, `low`.
 
 ## Development
 
@@ -168,8 +185,8 @@ pnpm build
 
 ## Troubleshooting
 
-### "GEMINI_API_KEY environment variable is required"
-Make sure you've set the `GEMINI_API_KEY` environment variable or added it to your MCP configuration.
+### "set GEMINI_API_KEY and/or OPENAI_API_KEY"
+Make sure you've set at least one provider API key or added it to your MCP configuration.
 
 ### Images not generating
 - Check your API key is valid
@@ -178,6 +195,9 @@ Make sure you've set the `GEMINI_API_KEY` environment variable or added it to yo
 
 ### Size options not working
 The `gemini-2.5-flash-image` model only supports 1024px resolution regardless of the size parameter. Use `gemini-3-pro-image-preview` or `gemini-3.1-flash-image-preview` for higher resolutions.
+
+### OpenAI aspect ratios look approximate
+OpenAI GPT Image models support `1024x1024`, `1536x1024`, and `1024x1536`. Wider or taller aspect ratios are mapped to the nearest supported landscape or portrait size.
 
 ## License
 
