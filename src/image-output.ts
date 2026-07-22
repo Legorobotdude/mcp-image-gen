@@ -2,6 +2,17 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { embedPngMetadata } from './png-metadata.js';
 
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+export function readPngDimensions(
+  buffer: Buffer
+): { width: number; height: number } | undefined {
+  if (buffer.length < 24 || !buffer.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    return undefined;
+  }
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
 export function ensureOutputDirectory(outputDirectory: string): void {
   if (!existsSync(outputDirectory)) {
     mkdirSync(outputDirectory, { recursive: true });

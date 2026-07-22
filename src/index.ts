@@ -80,7 +80,7 @@ function resolveProviderAndModel(args: Record<string, unknown>): {
   const requestedModel = typeof args.model === 'string' ? args.model : config.model;
 
   if (!ALL_MODELS.includes(requestedModel as ImageModel)) {
-    throw new Error(`Unsupported model: ${requestedModel}`);
+    throw new Error(`Unsupported model: ${requestedModel}. Valid models: ${ALL_MODELS.join(', ')}`);
   }
 
   const provider = getProviderForModel(requestedModel as ImageModel);
@@ -143,8 +143,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             imageSize: {
               type: 'string',
               enum: ['small', 'medium', 'large', 'xlarge'],
-              description: `Image resolution (small: 1K, medium: 2K, large: 2K, xlarge: 4K). Note: gemini-2.5-flash-image only supports 1K. Default: ${config.defaultImageSize}`,
+              description: `Image resolution. Gemini: small=1K, medium/large=2K, xlarge=4K (gemini-2.5-flash-image only supports 1K). OpenAI: pixel dimensions are fixed by aspectRatio (max 1536px), so this maps to rendering quality instead (small=low, medium=medium, large/xlarge=high). xAI: not supported; the provider chooses the size. Default: ${config.defaultImageSize}`,
               default: config.defaultImageSize,
+            },
+            quality: {
+              type: 'string',
+              enum: ['auto', 'low', 'medium', 'high'],
+              description:
+                "Optional, OpenAI models only. Rendering quality. Default 'auto', which derives quality from imageSize.",
+            },
+            background: {
+              type: 'string',
+              enum: ['auto', 'transparent', 'opaque'],
+              description:
+                "Optional, OpenAI models only. Set 'transparent' for a transparent background PNG. Default: auto.",
             },
             negativePrompt: {
               type: 'string',
@@ -224,6 +236,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 model: result.model,
                 aspectRatio: result.aspectRatio,
                 imageSize: result.imageSize,
+                ...(result.width && result.height
+                  ? { width: result.width, height: result.height }
+                  : {}),
                 message: `Image generated successfully and saved to: ${result.imagePath}`,
               },
               null,

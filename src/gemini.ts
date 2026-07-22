@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { readFileSync, existsSync } from 'fs';
 import { extname } from 'path';
-import { ensureOutputDirectory, savePngWithMetadata } from './image-output.js';
+import { ensureOutputDirectory, readPngDimensions, savePngWithMetadata } from './image-output.js';
 import type { ImageGenerationParams, ImageGenerationResult, GeminiModel, ImageSize } from './types.js';
 
 const MAX_SOURCE_IMAGES = 14;
@@ -150,6 +150,8 @@ export class GeminiImageGenerator {
             },
           });
 
+          const dimensions = readPngDimensions(rawBuffer);
+
           return {
             provider: 'gemini',
             imagePath: filepath,
@@ -157,6 +159,8 @@ export class GeminiImageGenerator {
             model,
             aspectRatio,
             imageSize,
+            width: dimensions?.width,
+            height: dimensions?.height,
           };
         }
       }

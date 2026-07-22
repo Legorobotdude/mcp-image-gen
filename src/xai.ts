@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { extname, join } from 'path';
 import { homedir } from 'os';
-import { ensureOutputDirectory, saveGeneratedImage } from './image-output.js';
+import { ensureOutputDirectory, readPngDimensions, saveGeneratedImage } from './image-output.js';
 import type {
   ImageGenerationParams,
   ImageGenerationResult,
@@ -162,10 +162,13 @@ export class XAIImageGenerator {
       throw new Error('No image data found in xAI response');
     }
 
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    const dimensions = readPngDimensions(imageBuffer);
+
     const filepath = saveGeneratedImage({
       outputDirectory: this.outputDirectory,
       prompt,
-      imageBuffer: Buffer.from(imageBase64, 'base64'),
+      imageBuffer,
       mimeType: result.data?.[0]?.mime_type,
       metadata: {
         Software: 'mcp-image-gen',
@@ -186,6 +189,8 @@ export class XAIImageGenerator {
       model,
       aspectRatio,
       imageSize,
+      width: dimensions?.width,
+      height: dimensions?.height,
     };
   }
 }

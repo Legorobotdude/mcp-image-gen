@@ -94,4 +94,7 @@ export interface ImageGenerationResult {
   model: ImageModel;
   aspectRatio: AspectRatio;
   imageSize: ImageSize;
+  // Actual pixel dimensions of the saved image, when determinable (PNG output).
+  width?: number;
+  height?: number;
 }

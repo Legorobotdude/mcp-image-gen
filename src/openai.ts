@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { createReadStream, existsSync } from 'fs';
 import { extname } from 'path';
-import { ensureOutputDirectory, savePngWithMetadata } from './image-output.js';
+import { ensureOutputDirectory, readPngDimensions, savePngWithMetadata } from './image-output.js';
 import type {
   AspectRatio,
   ImageGenerationParams,
@@ -16,6 +16,19 @@ import type {
 const MAX_SOURCE_IMAGES = 16;
 
 const SUPPORTED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
+const ASPECT_RATIO_PHRASES: Record<AspectRatio, string> = {
+  '1:1': 'square, 1:1 aspect ratio',
+  '2:3': 'portrait orientation, 2:3 aspect ratio',
+  '3:2': 'landscape orientation, 3:2 aspect ratio',
+  '3:4': 'portrait orientation, 3:4 aspect ratio',
+  '4:3': 'landscape orientation, 4:3 aspect ratio',
+  '4:5': 'portrait orientation, 4:5 aspect ratio',
+  '5:4': 'landscape orientation, 5:4 aspect ratio',
+  '9:16': 'tall portrait orientation, 9:16 vertical aspect ratio',
+  '16:9': 'wide landscape orientation, 16:9 aspect ratio',
+  '21:9': 'ultrawide landscape orientation, 21:9 aspect ratio',
+};
 
 export class OpenAIImageGenerator {
   private client: OpenAI;
@@ -48,12 +61,41 @@ export class OpenAIImageGenerator {
     }
   }
 
-  private buildPrompt(prompt: string, negativePrompt?: string): string {
-    if (!negativePrompt) {
-      return prompt;
+  // imageSize cannot change pixel dimensions on OpenAI (those come from aspect
+  // ratio, capped at 1536px), so it maps to rendering quality instead.
+  private getQualityForImageSize(size: ImageSize): OpenAIQuality {
+    switch (size) {
+      case 'small':
+        return 'low';
+      case 'medium':
+        return 'medium';
+      case 'large':
+      case 'xlarge':
+        return 'high';
     }
+  }
 
-    return `${prompt}\nAvoid: ${negativePrompt}`;
+  // A non-openai.com base URL means a proxy (e.g. the local Codex proxy) that
+  // forwards requests to a chat model driving the image_generation tool. Such
+  // backends ignore the API-level size/quality config but honor instructions
+  // embedded in the prompt text.
+  private isProxiedBackend(): boolean {
+    return !(this.client.baseURL ?? '').startsWith('https://api.openai.com');
+  }
+
+  private buildPrompt(
+    prompt: string,
+    negativePrompt: string | undefined,
+    aspectRatio: AspectRatio
+  ): string {
+    let finalPrompt = prompt;
+    if (negativePrompt) {
+      finalPrompt += `\nAvoid: ${negativePrompt}`;
+    }
+    if (this.isProxiedBackend()) {
+      finalPrompt += `\n\nRender the image in ${ASPECT_RATIO_PHRASES[aspectRatio]}, at the highest available resolution and quality.`;
+    }
+    return finalPrompt;
   }
 
   private validateSourceImages(sourceImages?: string[]): string[] {
@@ -97,7 +139,8 @@ export class OpenAIImageGenerator {
     } = params;
     const model = (modelOverride as OpenAIModel | undefined) ?? this.model;
     const size = this.getSizeForAspectRatio(aspectRatio);
-    const finalPrompt = this.buildPrompt(prompt, negativePrompt);
+    const effectiveQuality = quality === 'auto' ? this.getQualityForImageSize(imageSize) : quality;
+    const finalPrompt = this.buildPrompt(prompt, negativePrompt, aspectRatio);
     const validatedSourceImages = this.validateSourceImages(sourceImages);
 
     const response =
@@ -108,7 +151,7 @@ export class OpenAIImageGenerator {
             prompt: finalPrompt,
             n: 1,
             size,
-            quality,
+            quality: effectiveQuality,
             background,
             output_format: 'png',
           })
@@ -117,7 +160,7 @@ export class OpenAIImageGenerator {
             prompt: finalPrompt,
             n: 1,
             size,
-            quality,
+            quality: effectiveQuality,
             background,
             moderation,
             output_format: 'png',
@@ -128,10 +171,13 @@ export class OpenAIImageGenerator {
       throw new Error('No image data found in OpenAI response');
     }
 
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    const dimensions = readPngDimensions(imageBuffer);
+
     const filepath = savePngWithMetadata({
       outputDirectory: this.outputDirectory,
       prompt,
-      imageBuffer: Buffer.from(imageBase64, 'base64'),
+      imageBuffer,
       metadata: {
         Software: 'mcp-image-gen',
         Source: 'OpenAI',
@@ -142,7 +188,7 @@ export class OpenAIImageGenerator {
         ImageSize: imageSize,
         RequestedSize: size,
         Background: background,
-        Quality: quality,
+        Quality: effectiveQuality,
         ...(negativePrompt ? { NegativePrompt: negativePrompt } : {}),
         ...(validatedSourceImages.length === 0 ? { Moderation: moderation } : {}),
       },
@@ -155,6 +201,8 @@ export class OpenAIImageGenerator {
       model,
       aspectRatio,
       imageSize,
+      width: dimensions?.width,
+      height: dimensions?.height,
     };
   }
 }
