@@ -79,6 +79,12 @@ export interface ImageGenerationParams {
   prompt: string;
   model?: ImageModel;
   aspectRatio?: AspectRatio;
+  /**
+   * True when the caller passed aspectRatio explicitly rather than inheriting
+   * the config default. Edit calls only forward a ratio when it was asked for,
+   * so an unrequested default cannot silently reframe the source image.
+   */
+  aspectRatioExplicit?: boolean;
   imageSize?: ImageSize;
   negativePrompt?: string;
   sourceImages?: string[];

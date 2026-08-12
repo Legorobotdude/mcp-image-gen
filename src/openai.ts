@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { createReadStream, existsSync } from 'fs';
 import { extname } from 'path';
-import { ensureOutputDirectory, readPngDimensions, savePngWithMetadata } from './image-output.js';
+import { ensureOutputDirectory, readImageDimensions, savePngWithMetadata } from './image-output.js';
 import type {
   AspectRatio,
   ImageGenerationParams,
@@ -172,7 +172,7 @@ export class OpenAIImageGenerator {
     }
 
     const imageBuffer = Buffer.from(imageBase64, 'base64');
-    const dimensions = readPngDimensions(imageBuffer);
+    const dimensions = readImageDimensions(imageBuffer);
 
     const filepath = savePngWithMetadata({
       outputDirectory: this.outputDirectory,

@@ -192,6 +192,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         prompt: args.prompt,
         model,
         aspectRatio: (args.aspectRatio as AspectRatio) || config.defaultAspectRatio,
+        aspectRatioExplicit: args.aspectRatio !== undefined,
         imageSize: (args.imageSize as ImageSize) || config.defaultImageSize,
         negativePrompt: args.negativePrompt as string | undefined,
         sourceImages: args.sourceImages as string[] | undefined,

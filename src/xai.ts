@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { extname, join } from 'path';
 import { homedir } from 'os';
-import { ensureOutputDirectory, readPngDimensions, saveGeneratedImage } from './image-output.js';
+import { ensureOutputDirectory, readImageDimensions, saveGeneratedImage } from './image-output.js';
 import type {
   ImageGenerationParams,
   ImageGenerationResult,
@@ -84,7 +84,8 @@ export class XAIImageGenerator {
     return `${prompt}\nAvoid: ${negativePrompt}`;
   }
 
-  private loadSourceImages(sourceImages?: string[]): Array<{ url: string; type: 'image_url' }> {
+  /** Source images as `data:` URLs, in the order given. */
+  private loadSourceImages(sourceImages?: string[]): string[] {
     if (!sourceImages || sourceImages.length === 0) {
       return [];
     }
@@ -108,7 +109,7 @@ export class XAIImageGenerator {
       }
 
       const base64 = readFileSync(imagePath).toString('base64');
-      return { url: `data:${mimeType};base64,${base64}`, type: 'image_url' as const };
+      return `data:${mimeType};base64,${base64}`;
     });
   }
 
@@ -117,6 +118,7 @@ export class XAIImageGenerator {
       prompt,
       model: modelOverride,
       aspectRatio = '1:1',
+      aspectRatioExplicit,
       imageSize = 'large',
       negativePrompt,
       sourceImages,
@@ -133,8 +135,18 @@ export class XAIImageGenerator {
     };
 
     if (images.length > 0) {
-      // Edits keep the source image's shape; aspect_ratio only applies to pure generation.
-      body.image = images.length === 1 ? images[0] : images;
+      // The edits endpoint types `image` as an object for a single source but as
+      // bare data-URL strings for several; sending objects in the array is a 422.
+      body.image =
+        images.length === 1 ? { url: images[0], type: 'image_url' } : images;
+      // Edits default to the source image's shape. Forward a ratio only when the
+      // caller asked for one, so an inherited default cannot silently reframe the
+      // source. Note that the two tiers honour it differently: Imagine Image 2.0
+      // reframes and outpaints to fill the new canvas, while the standard model
+      // stretches the source to fit it.
+      if (aspectRatioExplicit) {
+        body.aspect_ratio = aspectRatio;
+      }
     } else {
       body.aspect_ratio = aspectRatio;
     }
@@ -163,7 +175,7 @@ export class XAIImageGenerator {
     }
 
     const imageBuffer = Buffer.from(imageBase64, 'base64');
-    const dimensions = readPngDimensions(imageBuffer);
+    const dimensions = readImageDimensions(imageBuffer);
 
     const filepath = saveGeneratedImage({
       outputDirectory: this.outputDirectory,
