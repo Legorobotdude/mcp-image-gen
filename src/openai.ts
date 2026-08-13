@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { createReadStream, existsSync } from 'fs';
+import { createReadStream, existsSync, readFileSync } from 'fs';
 import { extname } from 'path';
 import { ensureOutputDirectory, readImageDimensions, savePngWithMetadata } from './image-output.js';
 import type {
@@ -16,6 +16,13 @@ import type {
 const MAX_SOURCE_IMAGES = 16;
 
 const SUPPORTED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
+const MIME_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+};
 
 const ASPECT_RATIO_PHRASES: Record<AspectRatio, string> = {
   '1:1': 'square, 1:1 aspect ratio',
@@ -125,6 +132,50 @@ export class OpenAIImageGenerator {
     return sourceImages;
   }
 
+  // The Codex proxy has no /v1/images/edits endpoint, but its /v1/responses
+  // route forwards input_image parts to the chat model driving the
+  // image_generation tool, which uses them as references. `model` is omitted
+  // so the proxy substitutes its configured default chat model; `action` is
+  // required by the ChatGPT Codex backend's image_generation tool variant.
+  private async editViaProxiedResponses(
+    finalPrompt: string,
+    sourceImages: string[],
+    size: string,
+    quality: OpenAIQuality,
+    background: OpenAIBackground
+  ): Promise<string> {
+    const content = [
+      { type: 'input_text', text: finalPrompt },
+      ...sourceImages.map((imagePath) => ({
+        type: 'input_image',
+        image_url: `data:${MIME_TYPES[extname(imagePath).toLowerCase()]};base64,${readFileSync(imagePath).toString('base64')}`,
+        detail: 'auto',
+      })),
+    ];
+
+    const response = await this.client.responses.create({
+      instructions: 'Use the image_generation tool to generate the requested image.',
+      input: [{ role: 'user', content }],
+      tools: [
+        { type: 'image_generation', action: 'generate', output_format: 'png', size, quality, background },
+      ],
+      tool_choice: 'auto',
+      parallel_tool_calls: true,
+      store: false,
+    } as unknown as OpenAI.Responses.ResponseCreateParamsNonStreaming);
+
+    for (const item of response.output ?? []) {
+      if (item.type === 'image_generation_call' && typeof item.result === 'string' && item.result) {
+        return item.result;
+      }
+    }
+
+    const modelText = response.output_text?.trim();
+    throw new Error(
+      `Codex backend did not return an image${modelText ? `. Model response: ${modelText}` : '.'}`
+    );
+  }
+
   async generateImage(params: ImageGenerationParams): Promise<ImageGenerationResult> {
     const {
       prompt,
@@ -143,30 +194,41 @@ export class OpenAIImageGenerator {
     const finalPrompt = this.buildPrompt(prompt, negativePrompt, aspectRatio);
     const validatedSourceImages = this.validateSourceImages(sourceImages);
 
-    const response =
-      validatedSourceImages.length > 0
-        ? await this.client.images.edit({
-            model,
-            image: validatedSourceImages.map((imagePath) => createReadStream(imagePath)),
-            prompt: finalPrompt,
-            n: 1,
-            size,
-            quality: effectiveQuality,
-            background,
-            output_format: 'png',
-          })
-        : await this.client.images.generate({
-            model,
-            prompt: finalPrompt,
-            n: 1,
-            size,
-            quality: effectiveQuality,
-            background,
-            moderation,
-            output_format: 'png',
-          });
+    let imageBase64: string | undefined;
+    if (validatedSourceImages.length > 0 && this.isProxiedBackend()) {
+      imageBase64 = await this.editViaProxiedResponses(
+        finalPrompt,
+        validatedSourceImages,
+        size,
+        effectiveQuality,
+        background
+      );
+    } else {
+      const response =
+        validatedSourceImages.length > 0
+          ? await this.client.images.edit({
+              model,
+              image: validatedSourceImages.map((imagePath) => createReadStream(imagePath)),
+              prompt: finalPrompt,
+              n: 1,
+              size,
+              quality: effectiveQuality,
+              background,
+              output_format: 'png',
+            })
+          : await this.client.images.generate({
+              model,
+              prompt: finalPrompt,
+              n: 1,
+              size,
+              quality: effectiveQuality,
+              background,
+              moderation,
+              output_format: 'png',
+            });
+      imageBase64 = response.data?.[0]?.b64_json;
+    }
 
-    const imageBase64 = response.data?.[0]?.b64_json;
     if (!imageBase64) {
       throw new Error('No image data found in OpenAI response');
     }
