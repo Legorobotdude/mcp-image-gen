@@ -137,13 +137,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             aspectRatio: {
               type: 'string',
               enum: ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
-              description: `Aspect ratio of the generated image. Default: ${config.defaultAspectRatio}`,
+              description: `Aspect ratio of the generated image. xAI generates 4:5, 5:4 and 21:9 at the closest shape its API supports and center-crops to the exact ratio; all other ratios are native. Default: ${config.defaultAspectRatio}`,
               default: config.defaultAspectRatio,
             },
             imageSize: {
               type: 'string',
               enum: ['small', 'medium', 'large', 'xlarge'],
-              description: `Image resolution. Gemini: small=1K, medium/large=2K, xlarge=4K (gemini-2.5-flash-image only supports 1K). OpenAI: pixel dimensions are fixed by aspectRatio (max 1536px), so this maps to rendering quality instead (small=low, medium=medium, large/xlarge=high). xAI: not supported; the provider chooses the size. Default: ${config.defaultImageSize}`,
+              description: `Image resolution. Gemini: small=1K, medium/large=2K, xlarge=4K (gemini-2.5-flash-image only supports 1K). OpenAI: pixel dimensions are fixed by aspectRatio (max 1536px), so this maps to rendering quality instead (small=low, medium=medium, large/xlarge=high). xAI: small=1k (~1024-1280px long edge), medium/large/xlarge=2k (~2048-2912px long edge); there is no 4k tier. Default: ${config.defaultImageSize}`,
               default: config.defaultImageSize,
             },
             quality: {
