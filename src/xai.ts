@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
 import { homedir } from 'os';
 import sharp from 'sharp';
@@ -85,7 +85,13 @@ async function conformToAspectRatio(
 interface GrokAuthEntry {
   key?: string;
   expires_at?: string;
+  refresh_token?: string;
+  oidc_issuer?: string;
+  oidc_client_id?: string;
 }
+
+// Refresh this long before expires_at so a token can't lapse mid-request.
+const TOKEN_EXPIRY_MARGIN_MS = 60_000;
 
 function grokAuthPath(): string {
   return join(homedir(), '.grok', 'auth.json');
@@ -95,9 +101,79 @@ export function hasXAICredentials(): boolean {
   return Boolean(process.env.XAI_API_KEY) || existsSync(grokAuthPath());
 }
 
-// Grok CLI OIDC tokens expire (~6h) and are refreshed by the CLI itself,
-// so the token is re-read from auth.json on every request rather than cached.
-function resolveXAIToken(): string {
+function readGrokAuth(authPath: string): { auth: Record<string, GrokAuthEntry>; id: string } {
+  const auth = JSON.parse(readFileSync(authPath, 'utf-8')) as Record<string, GrokAuthEntry>;
+  const id = Object.keys(auth).find((key) => auth[key]?.key) ?? '';
+  if (!id) {
+    throw new Error(
+      `No token found in ${authPath}. Log in with the Grok CLI (\`grok\`) or set XAI_API_KEY.`
+    );
+  }
+  return { auth, id };
+}
+
+// Performs the same OIDC refresh grant the Grok CLI runs on startup, then
+// persists the result so the CLI picks up the new token too. xAI rotates
+// refresh tokens, so the write-back must not be skipped or raced — hence the
+// re-read + merge and the atomic rename.
+async function refreshGrokToken(authPath: string, entry: GrokAuthEntry): Promise<string> {
+  if (!entry.refresh_token || !entry.oidc_issuer || !entry.oidc_client_id) {
+    throw new Error(
+      'Grok CLI token has expired and no refresh token is available. Open the Grok CLI (`grok`) to log in again, or set XAI_API_KEY.'
+    );
+  }
+
+  const response = await fetch(`${entry.oidc_issuer}/oauth2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: entry.oidc_client_id,
+      refresh_token: entry.refresh_token,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to refresh Grok CLI token (${response.status}): ${errorText}. Open the Grok CLI (\`grok\`) to log in again, or set XAI_API_KEY.`
+    );
+  }
+
+  const tokens = (await response.json()) as {
+    access_token?: string;
+    expires_in?: number;
+    refresh_token?: string;
+  };
+  if (!tokens.access_token) {
+    throw new Error('No access token in Grok CLI token refresh response.');
+  }
+
+  // Re-read before writing: the CLI may have rewritten auth.json meanwhile.
+  const { auth, id } = readGrokAuth(authPath);
+  auth[id] = {
+    ...auth[id],
+    key: tokens.access_token,
+    ...(tokens.expires_in
+      ? { expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString() }
+      : {}),
+    ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+  };
+
+  const tempPath = `${authPath}.${process.pid}.tmp`;
+  writeFileSync(tempPath, JSON.stringify(auth, null, 2), { mode: 0o600 });
+  renameSync(tempPath, authPath);
+
+  return tokens.access_token;
+}
+
+// Serializes refreshes so concurrent requests can't each spend the (rotating)
+// refresh token.
+let refreshInFlight: Promise<string> | null = null;
+
+// Grok CLI OIDC tokens expire (~6h), so the token is re-read from auth.json on
+// every request and refreshed in place when it is expired or about to be.
+async function resolveXAIToken(): Promise<string> {
   const apiKey = process.env.XAI_API_KEY;
   if (apiKey) {
     return apiKey;
@@ -110,21 +186,20 @@ function resolveXAIToken(): string {
     );
   }
 
-  const auth = JSON.parse(readFileSync(authPath, 'utf-8')) as Record<string, GrokAuthEntry>;
-  const entry = Object.values(auth).find((value) => value?.key);
-  if (!entry?.key) {
-    throw new Error(
-      `No token found in ${authPath}. Log in with the Grok CLI (\`grok\`) or set XAI_API_KEY.`
-    );
+  const { auth, id } = readGrokAuth(authPath);
+  const entry = auth[id];
+
+  const expiresAt = entry.expires_at ? new Date(entry.expires_at).getTime() : Infinity;
+  if (expiresAt - TOKEN_EXPIRY_MARGIN_MS > Date.now()) {
+    return entry.key as string;
   }
 
-  if (entry.expires_at && new Date(entry.expires_at).getTime() < Date.now()) {
-    throw new Error(
-      'Grok CLI token has expired. Open the Grok CLI (`grok`) to refresh it, or set XAI_API_KEY.'
-    );
+  if (!refreshInFlight) {
+    refreshInFlight = refreshGrokToken(authPath, entry).finally(() => {
+      refreshInFlight = null;
+    });
   }
-
-  return entry.key;
+  return refreshInFlight;
 }
 
 export class XAIImageGenerator {
@@ -232,7 +307,7 @@ export class XAIImageGenerator {
     const response = await fetch(images.length > 0 ? XAI_EDITS_URL : XAI_GENERATIONS_URL, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${resolveXAIToken()}`,
+        Authorization: `Bearer ${await resolveXAIToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
