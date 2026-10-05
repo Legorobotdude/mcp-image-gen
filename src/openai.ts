@@ -2,18 +2,22 @@ import OpenAI from 'openai';
 import { createReadStream, existsSync, readFileSync } from 'fs';
 import { extname } from 'path';
 import { ensureOutputDirectory, readImageDimensions, savePngWithMetadata } from './image-output.js';
-import type {
-  AspectRatio,
-  ImageGenerationParams,
-  ImageGenerationResult,
-  ImageSize,
-  OpenAIBackground,
-  OpenAIModel,
-  OpenAIQuality,
-  OpenAIModeration,
+import {
+  isGptImage25Model,
+  type AspectRatio,
+  type ImageGenerationParams,
+  type ImageGenerationResult,
+  type ImageSize,
+  type OpenAIBackground,
+  type OpenAIModel,
+  type OpenAIQuality,
 } from './types.js';
 
 const MAX_SOURCE_IMAGES = 16;
+
+const GPT_IMAGE_25_MAX_EDGE = 3840;
+const GPT_IMAGE_25_MAX_PIXELS = 8_294_400;
+const GPT_IMAGE_25_MIN_PIXELS = 655_360;
 
 const SUPPORTED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 
@@ -37,6 +41,10 @@ const ASPECT_RATIO_PHRASES: Record<AspectRatio, string> = {
   '21:9': 'ultrawide landscape orientation, 21:9 aspect ratio',
 };
 
+function roundToMultiple(value: number, multiple: number): number {
+  return Math.max(multiple, Math.round(value / multiple) * multiple);
+}
+
 export class OpenAIImageGenerator {
   private client: OpenAI;
   private model: OpenAIModel;
@@ -50,7 +58,10 @@ export class OpenAIImageGenerator {
     ensureOutputDirectory(this.outputDirectory);
   }
 
-  private getSizeForAspectRatio(aspectRatio: AspectRatio): '1024x1024' | '1536x1024' | '1024x1536' {
+  // Pre-2.5 GPT Image models only accept these fixed sizes.
+  private getLegacySizeForAspectRatio(
+    aspectRatio: AspectRatio
+  ): '1024x1024' | '1536x1024' | '1024x1536' {
     switch (aspectRatio) {
       case '2:3':
       case '3:4':
@@ -68,9 +79,78 @@ export class OpenAIImageGenerator {
     }
   }
 
-  // imageSize cannot change pixel dimensions on OpenAI (those come from aspect
-  // ratio, capped at 1536px), so it maps to rendering quality instead.
-  private getQualityForImageSize(size: ImageSize): OpenAIQuality {
+  private getLongEdgeForImageSize(size: ImageSize): number {
+    switch (size) {
+      case 'small':
+        return 1024;
+      case 'medium':
+      case 'large':
+        return 2048;
+      case 'xlarge':
+        return GPT_IMAGE_25_MAX_EDGE;
+    }
+  }
+
+  // GPT Image 2.5 accepts custom WxH within documented edge/pixel constraints.
+  private getGptImage25Size(aspectRatio: AspectRatio, imageSize: ImageSize): string {
+    const [ratioW, ratioH] = aspectRatio.split(':').map(Number);
+    let longEdge = this.getLongEdgeForImageSize(imageSize);
+
+    const dimensionsForLongEdge = (edge: number): { width: number; height: number } => {
+      let width: number;
+      let height: number;
+      if (ratioW >= ratioH) {
+        width = edge;
+        height = roundToMultiple((edge * ratioH) / ratioW, 16);
+      } else {
+        height = edge;
+        width = roundToMultiple((edge * ratioW) / ratioH, 16);
+      }
+
+      width = Math.min(width, GPT_IMAGE_25_MAX_EDGE);
+      height = Math.min(height, GPT_IMAGE_25_MAX_EDGE);
+
+      let pixels = width * height;
+      if (pixels > GPT_IMAGE_25_MAX_PIXELS) {
+        const scale = Math.sqrt(GPT_IMAGE_25_MAX_PIXELS / pixels);
+        width = roundToMultiple(width * scale, 16);
+        height = roundToMultiple(height * scale, 16);
+        while (width * height > GPT_IMAGE_25_MAX_PIXELS) {
+          if (width >= height) {
+            width = Math.max(16, width - 16);
+          } else {
+            height = Math.max(16, height - 16);
+          }
+        }
+      }
+
+      return { width, height };
+    };
+
+    let { width, height } = dimensionsForLongEdge(longEdge);
+    while (width * height < GPT_IMAGE_25_MIN_PIXELS && longEdge < GPT_IMAGE_25_MAX_EDGE) {
+      longEdge = Math.min(GPT_IMAGE_25_MAX_EDGE, longEdge + 16);
+      ({ width, height } = dimensionsForLongEdge(longEdge));
+    }
+
+    return `${width}x${height}`;
+  }
+
+  private getSize(model: OpenAIModel, aspectRatio: AspectRatio, imageSize: ImageSize): string {
+    if (isGptImage25Model(model)) {
+      return this.getGptImage25Size(aspectRatio, imageSize);
+    }
+    return this.getLegacySizeForAspectRatio(aspectRatio);
+  }
+
+  // Pre-2.5: imageSize cannot change pixel dimensions (capped at 1536px), so it
+  // maps to rendering quality. GPT Image 2.5 uses imageSize for resolution
+  // instead; auto quality defaults to high.
+  private getQualityForImageSize(model: OpenAIModel, size: ImageSize): OpenAIQuality {
+    if (isGptImage25Model(model)) {
+      return 'high';
+    }
+
     switch (size) {
       case 'small':
         return 'low';
@@ -79,6 +159,14 @@ export class OpenAIImageGenerator {
       case 'large':
       case 'xlarge':
         return 'high';
+    }
+  }
+
+  private assertQualitySupported(model: OpenAIModel, quality: OpenAIQuality): void {
+    if ((quality === 'xhigh' || quality === 'max') && !isGptImage25Model(model)) {
+      throw new Error(
+        `Quality "${quality}" is only supported on gpt-image-2.5-flare and gpt-image-2.5-sunburst.`
+      );
     }
   }
 
@@ -189,10 +277,16 @@ export class OpenAIImageGenerator {
       moderation = 'auto',
     } = params;
     const model = (modelOverride as OpenAIModel | undefined) ?? this.model;
-    const size = this.getSizeForAspectRatio(aspectRatio);
-    const effectiveQuality = quality === 'auto' ? this.getQualityForImageSize(imageSize) : quality;
+    this.assertQualitySupported(model, quality);
+    const size = this.getSize(model, aspectRatio, imageSize);
+    const effectiveQuality =
+      quality === 'auto' ? this.getQualityForImageSize(model, imageSize) : quality;
     const finalPrompt = this.buildPrompt(prompt, negativePrompt, aspectRatio);
     const validatedSourceImages = this.validateSourceImages(sourceImages);
+
+    // SDK types lag GPT Image 2.5 (custom WxH sizes; xhigh/max quality).
+    const apiSize = size as '1024x1024';
+    const apiQuality = effectiveQuality as 'high';
 
     let imageBase64: string | undefined;
     if (validatedSourceImages.length > 0 && this.isProxiedBackend()) {
@@ -211,8 +305,8 @@ export class OpenAIImageGenerator {
               image: validatedSourceImages.map((imagePath) => createReadStream(imagePath)),
               prompt: finalPrompt,
               n: 1,
-              size,
-              quality: effectiveQuality,
+              size: apiSize,
+              quality: apiQuality,
               background,
               output_format: 'png',
             })
@@ -220,8 +314,8 @@ export class OpenAIImageGenerator {
               model,
               prompt: finalPrompt,
               n: 1,
-              size,
-              quality: effectiveQuality,
+              size: apiSize,
+              quality: apiQuality,
               background,
               moderation,
               output_format: 'png',

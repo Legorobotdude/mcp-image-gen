@@ -4,6 +4,8 @@ export type GeminiModel =
   | 'gemini-3.1-flash-image-preview';
 
 export type OpenAIModel =
+  | 'gpt-image-2.5-flare'
+  | 'gpt-image-2.5-sunburst'
   | 'gpt-image-2'
   | 'gpt-image-1.5'
   | 'chatgpt-image-latest'
@@ -20,7 +22,7 @@ export type ImageSize = 'small' | 'medium' | 'large' | 'xlarge';
 
 export type OpenAIBackground = 'auto' | 'transparent' | 'opaque';
 
-export type OpenAIQuality = 'auto' | 'low' | 'medium' | 'high';
+export type OpenAIQuality = 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export type OpenAIModeration = 'auto' | 'low';
 
@@ -35,11 +37,18 @@ export const GEMINI_MODELS: GeminiModel[] = [
 ];
 
 export const OPENAI_MODELS: OpenAIModel[] = [
+  'gpt-image-2.5-flare',
+  'gpt-image-2.5-sunburst',
   'gpt-image-2',
   'gpt-image-1.5',
   'chatgpt-image-latest',
   'gpt-image-1',
   'gpt-image-1-mini',
+];
+
+export const GPT_IMAGE_25_MODELS: OpenAIModel[] = [
+  'gpt-image-2.5-flare',
+  'gpt-image-2.5-sunburst',
 ];
 
 export const XAI_MODELS: XAIModel[] = ['grok-imagine-image', 'grok-imagine-image-quality'];
@@ -52,6 +61,10 @@ export function isGeminiModel(model: string): model is GeminiModel {
 
 export function isOpenAIModel(model: string): model is OpenAIModel {
   return OPENAI_MODELS.includes(model as OpenAIModel);
+}
+
+export function isGptImage25Model(model: string): boolean {
+  return GPT_IMAGE_25_MODELS.includes(model as OpenAIModel);
 }
 
 export function isXAIModel(model: string): model is XAIModel {

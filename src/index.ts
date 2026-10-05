@@ -48,7 +48,7 @@ function getFallbackConfig(config: ReturnType<typeof loadConfig>): ReturnType<ty
       model: available.gemini
         ? 'gemini-3-pro-image-preview'
         : available.openai
-          ? 'gpt-image-1.5'
+          ? 'gpt-image-2.5-flare'
           : 'grok-imagine-image',
     };
   }
@@ -143,14 +143,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             imageSize: {
               type: 'string',
               enum: ['small', 'medium', 'large', 'xlarge'],
-              description: `Image resolution. Gemini: small=1K, medium/large=2K, xlarge=4K (gemini-2.5-flash-image only supports 1K). OpenAI: pixel dimensions are fixed by aspectRatio (max 1536px), so this maps to rendering quality instead (small=low, medium=medium, large/xlarge=high). xAI: small=1k (~1024-1280px long edge), medium/large/xlarge=2k (~2048-2912px long edge); there is no 4k tier. Default: ${config.defaultImageSize}`,
+              description: `Image resolution. Gemini: small=1K, medium/large=2K, xlarge=4K (gemini-2.5-flash-image only supports 1K). OpenAI GPT Image 2.5 (flare/sunburst): small≈1K, medium/large≈2K, xlarge≈4K (custom WxH from aspectRatio). Older OpenAI models: pixel dimensions are fixed by aspectRatio (max 1536px), so this maps to rendering quality instead (small=low, medium=medium, large/xlarge=high). xAI: small=1k (~1024-1280px long edge), medium/large/xlarge=2k (~2048-2912px long edge); there is no 4k tier. Default: ${config.defaultImageSize}`,
               default: config.defaultImageSize,
             },
             quality: {
               type: 'string',
-              enum: ['auto', 'low', 'medium', 'high'],
+              enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'],
               description:
-                "Optional, OpenAI models only. Rendering quality. Default 'auto', which derives quality from imageSize.",
+                "Optional, OpenAI models only. Rendering quality. Default 'auto' (pre-2.5: derived from imageSize; GPT Image 2.5: high). xhigh and max require gpt-image-2.5-flare or gpt-image-2.5-sunburst.",
             },
             background: {
               type: 'string',
