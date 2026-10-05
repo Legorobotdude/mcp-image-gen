@@ -298,10 +298,12 @@ export class XAIImageGenerator {
       body.aspect_ratio = XAI_ASPECT_RATIOS[aspectRatio];
     }
 
-    if (images.length > 0) {
-      // The edits endpoint types `image` as an object for a single source but as
-      // bare data-URL strings for several; sending objects in the array is a 422.
-      body.image = images.length === 1 ? { url: images[0], type: 'image_url' } : images;
+    if (images.length === 1) {
+      body.image = { url: images[0], type: 'image_url' };
+    } else if (images.length > 1) {
+      // Multi-image edits use the plural `images` field with explicit URL
+      // objects; bare strings under `image` fail xAI's url/file_id validation.
+      body.images = images.map((url) => ({ url, type: 'image_url' }));
     }
 
     const response = await fetch(images.length > 0 ? XAI_EDITS_URL : XAI_GENERATIONS_URL, {
