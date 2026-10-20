@@ -132,7 +132,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             model: {
               type: 'string',
               enum: ALL_MODELS,
-              description: `Image model to use. Default: ${config.model}`,
+              description: `Image model to use. Default: ${config.model}. gemini-nano-banana-2.1 (Nano Banana 2.1) is the successor to gemini-3.1-flash-image-preview: Flash-level speed and cost with better visual quality, prompt adherence, character consistency and text rendering; prefer it over gemini-3.1-flash-image-preview for fast Gemini generation.`,
             },
             aspectRatio: {
               type: 'string',
@@ -143,7 +143,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             imageSize: {
               type: 'string',
               enum: ['small', 'medium', 'large', 'xlarge'],
-              description: `Image resolution. Gemini: small=1K, medium/large=2K, xlarge=4K (gemini-2.5-flash-image only supports 1K). OpenAI GPT Image 2.5 (flare/sunburst): small≈1K, medium/large≈2K, xlarge≈4K (custom WxH from aspectRatio). Older OpenAI models: pixel dimensions are fixed by aspectRatio (max 1536px), so this maps to rendering quality instead (small=low, medium=medium, large/xlarge=high). xAI: small=1k (~1024-1280px long edge), medium/large/xlarge=2k (~2048-2912px long edge); there is no 4k tier. Default: ${config.defaultImageSize}`,
+              description: `Image resolution. Gemini: small=1K, medium/large=2K, xlarge=4K (gemini-2.5-flash-image only supports 1K; the Gemini 3 models and gemini-nano-banana-2.1 support all three). OpenAI GPT Image 2.5 (flare/sunburst): small≈1K, medium/large≈2K, xlarge≈4K (custom WxH from aspectRatio). Older OpenAI models: pixel dimensions are fixed by aspectRatio (max 1536px), so this maps to rendering quality instead (small=low, medium=medium, large/xlarge=high). xAI: small=1k (~1024-1280px long edge), medium/large/xlarge=2k (~2048-2912px long edge); there is no 4k tier. Default: ${config.defaultImageSize}`,
               default: config.defaultImageSize,
             },
             quality: {
@@ -165,7 +165,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             sourceImages: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Optional. Array of absolute file paths to source/reference images for image editing, style transfer, or character consistency. Gemini supports png, jpg, jpeg, gif, webp (max 14). OpenAI supports png, jpg, jpeg, webp (max 16). xAI Grok supports png, jpg, jpeg, webp (max 3).',
+              description: 'Optional. Array of absolute file paths to source/reference images for image editing, style transfer, or character consistency. Gemini supports png, jpg, jpeg, gif, webp (max 14; gemini-nano-banana-2.1 keeps up to 4 characters consistent and up to 10 objects high-fidelity). OpenAI supports png, jpg, jpeg, webp (max 16). xAI Grok supports png, jpg, jpeg, webp (max 3).',
             },
           },
           required: ['prompt'],

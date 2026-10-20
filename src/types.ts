@@ -1,7 +1,8 @@
 export type GeminiModel =
   | 'gemini-2.5-flash-image'
   | 'gemini-3-pro-image-preview'
-  | 'gemini-3.1-flash-image-preview';
+  | 'gemini-3.1-flash-image-preview'
+  | 'gemini-nano-banana-2.1';
 
 export type OpenAIModel =
   | 'gpt-image-2.5-flare'
@@ -34,6 +35,7 @@ export const GEMINI_MODELS: GeminiModel[] = [
   'gemini-2.5-flash-image',
   'gemini-3-pro-image-preview',
   'gemini-3.1-flash-image-preview',
+  'gemini-nano-banana-2.1',
 ];
 
 export const OPENAI_MODELS: OpenAIModel[] = [

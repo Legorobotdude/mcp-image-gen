@@ -17,7 +17,8 @@ A Model Context Protocol (MCP) server for generating images using Google's Gemin
 ## Models Supported
 
 - **gemini-3-pro-image-preview** (Default): Professional-grade, supports up to 4K resolution
-- **gemini-3.1-flash-image-preview**: High-efficiency counterpart to Gemini 3 Pro, optimized for speed and high-volume use; supports up to 4K resolution
+- **gemini-nano-banana-2.1**: Nano Banana 2.1, Google's successor to Gemini 3.1 Flash Image; Flash-level speed and cost with better visual quality, prompt adherence, character consistency and text rendering; 1K/2K/4K
+- **gemini-3.1-flash-image-preview**: High-efficiency counterpart to Gemini 3 Pro, optimized for speed and high-volume use; supports up to 4K resolution (superseded by `gemini-nano-banana-2.1`)
 - **gemini-2.5-flash-image**: Optimized for speed, generates 1024px resolution
 - **gpt-image-2.5-flare**: Fast GPT Image 2.5 model (OpenAI default when OpenAI is selected); quality comparable to GPT Image 2 at lower latency; up to ~4K
 - **gpt-image-2.5-sunburst**: Higher-quality GPT Image 2.5 model for precise edits; up to ~4K
@@ -74,14 +75,14 @@ Create a `config.json` file in the project root to customize defaults:
 **Available Options:**
 
 - `model`:
-  - Gemini: `"gemini-3-pro-image-preview"` (default), `"gemini-3.1-flash-image-preview"`, `"gemini-2.5-flash-image"`
+  - Gemini: `"gemini-3-pro-image-preview"` (default), `"gemini-nano-banana-2.1"`, `"gemini-3.1-flash-image-preview"`, `"gemini-2.5-flash-image"`
   - OpenAI: `"gpt-image-2.5-flare"`, `"gpt-image-2.5-sunburst"`, `"gpt-image-2"`, `"gpt-image-1.5"`, `"chatgpt-image-latest"`, `"gpt-image-1"`, `"gpt-image-1-mini"`
 - `defaultAspectRatio`: `"1:1"`, `"16:9"`, `"9:16"`, `"4:3"`, or `"3:4"`
 - `defaultImageSize`:
   - `"small"` (1K - 1024px)
   - `"medium"` (2K - 2048px)
   - `"large"` (2K - 2048px)
-  - `"xlarge"` (4K - 4096px - Gemini 3 / GPT Image 2.5; older OpenAI models map this to quality only)
+  - `"xlarge"` (4K - 4096px - Gemini 3 / Nano Banana 2.1 / GPT Image 2.5; older OpenAI models map this to quality only)
 - `outputDirectory`: Path where generated images will be saved (default: `~/gemini_images`, can use absolute paths or `~` for home directory)
 
 ## Usage with Claude Desktop
@@ -120,7 +121,7 @@ Generate an image from a text prompt.
 - **background** (optional): OpenAI only - `"auto"`, `"transparent"`, `"opaque"`
 - **negativePrompt** (optional): Describe what you DON'T want in the image
 - **sourceImages** (optional): Array of absolute file paths to source/reference images
-  - Gemini: png, jpg, jpeg, gif, webp; max 14 images
+  - Gemini: png, jpg, jpeg, gif, webp; max 14 images (`gemini-nano-banana-2.1`: up to 4 characters for consistency and up to 10 objects for fidelity)
   - OpenAI: png, jpg, jpeg, webp; max 16 images
 
 OpenAI moderation is fixed to `low`.
@@ -168,7 +169,8 @@ The tool returns a JSON response with:
 
 - All generated images include a SynthID watermark (Google's digital watermark)
 - **gemini-3-pro-image-preview** (default): Best for high-quality, detailed images up to 4K
-- **gemini-3.1-flash-image-preview**: Best for speed and high-volume use, supports up to 4K
+- **gemini-nano-banana-2.1**: Best for speed and high-volume use, supports up to 4K; preferred over `gemini-3.1-flash-image-preview`
+- **gemini-3.1-flash-image-preview**: Previous fast Gemini model, supports up to 4K
 - **gemini-2.5-flash-image**: Best for quick generation, fixed at 1024px resolution
 - **gpt-image-2.5-flare**: Default OpenAI model; fast GPT Image 2.5 with up to ~4K custom sizes
 - **gpt-image-2.5-sunburst**: Prefer for precise edits and higher visual quality
@@ -189,6 +191,11 @@ Build for production:
 pnpm build
 ```
 
+Run the tests (they import from `dist/`, so build first):
+```bash
+pnpm build && node --test tests/*.test.mjs
+```
+
 ## Troubleshooting
 
 ### "set GEMINI_API_KEY and/or OPENAI_API_KEY"
@@ -200,7 +207,7 @@ Make sure you've set at least one provider API key or added it to your MCP confi
 - Ensure the output directory is writable
 
 ### Size options not working
-The `gemini-2.5-flash-image` model only supports 1024px resolution regardless of the size parameter. Use `gemini-3-pro-image-preview` or `gemini-3.1-flash-image-preview` for higher resolutions. For OpenAI, use `gpt-image-2.5-flare` or `gpt-image-2.5-sunburst` for 2K/4K; older GPT Image models max out at 1536px.
+The `gemini-2.5-flash-image` model only supports 1024px resolution regardless of the size parameter. Use `gemini-3-pro-image-preview`, `gemini-nano-banana-2.1`, or `gemini-3.1-flash-image-preview` for higher resolutions. For OpenAI, use `gpt-image-2.5-flare` or `gpt-image-2.5-sunburst` for 2K/4K; older GPT Image models max out at 1536px.
 
 ### OpenAI aspect ratios look approximate
 Pre-2.5 OpenAI models support `1024x1024`, `1536x1024`, and `1024x1536`. Wider or taller aspect ratios are mapped to the nearest supported landscape or portrait size. GPT Image 2.5 uses custom WxH sized to the requested aspect ratio within API limits.
