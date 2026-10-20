@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import sharp from 'sharp';
 import { loadConfig } from '../dist/config.js';
-import { GeminiImageGenerator } from '../dist/gemini.js';
+import { GeminiImageGenerator, describeMissingImage } from '../dist/gemini.js';
 import {
   ALL_MODELS,
   GEMINI_MODELS,
@@ -68,4 +68,32 @@ test(`${NANO_BANANA_21} rejects more than 14 source images before calling the AP
     generator.generateImage({ prompt: 'Combine the references', model: NANO_BANANA_21, sourceImages }),
     /Too many source images: 15\. Maximum is 14\./
   );
+});
+
+test('describeMissingImage reports the candidate finish reason and model text', (t) => {
+  const message = describeMissingImage({
+    candidates: [{ finishReason: 'PROHIBITED_CONTENT', content: { parts: [{ text: 'I cannot create that image.' }] } }],
+  });
+  t.diagnostic(message);
+  assert.equal(message, 'No image data found in response (finishReason: PROHIBITED_CONTENT; model text: I cannot create that image.)');
+});
+
+test('describeMissingImage reports a blocked prompt that returned no candidates', (t) => {
+  const message = describeMissingImage({ promptFeedback: { blockReason: 'OTHER', blockReasonMessage: 'policy' } });
+  t.diagnostic(message);
+  assert.equal(message, 'No image data found in response (prompt blocked: OTHER (policy))');
+});
+
+test('describeMissingImage says when the response had no candidates and no block reason', (t) => {
+  const message = describeMissingImage({});
+  t.diagnostic(message);
+  assert.equal(message, 'No image data found in response (no candidates returned)');
+});
+
+test('describeMissingImage includes a finish message and ignores empty text parts', (t) => {
+  const message = describeMissingImage({
+    candidates: [{ finishReason: 'IMAGE_OTHER', finishMessage: 'Unable to generate', content: { parts: [{ text: '' }] } }],
+  });
+  t.diagnostic(message);
+  assert.equal(message, 'No image data found in response (finishReason: IMAGE_OTHER; finishMessage: Unable to generate)');
 });

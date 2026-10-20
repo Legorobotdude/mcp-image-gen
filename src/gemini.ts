@@ -1,10 +1,40 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, type SafetySetting } from '@google/genai';
 import { readFileSync, existsSync } from 'fs';
 import { extname } from 'path';
 import { ensureOutputDirectory, readImageDimensions, savePngWithMetadata } from './image-output.js';
 import type { ImageGenerationParams, ImageGenerationResult, GeminiModel, ImageSize } from './types.js';
 
 const MAX_SOURCE_IMAGES = 14;
+
+// The four adjustable harm filters. Without these the API applies its defaults, which silently
+// drop swimwear and firearm images that the non-adjustable policy filters would allow.
+const SAFETY_SETTINGS = [
+  'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+  'HARM_CATEGORY_DANGEROUS_CONTENT',
+  'HARM_CATEGORY_HARASSMENT',
+  'HARM_CATEGORY_HATE_SPEECH',
+].map((category) => ({ category, threshold: 'BLOCK_NONE' })) as SafetySetting[];
+
+interface ResponseWithoutImage {
+  promptFeedback?: { blockReason?: string; blockReasonMessage?: string };
+  candidates?: Array<{ finishReason?: string; finishMessage?: string; content?: { parts?: Array<{ text?: string }> } }>;
+}
+
+/** Explains why a Gemini response carried no image (block reason, finish reason, model text). */
+export function describeMissingImage(response: ResponseWithoutImage): string {
+  const details: string[] = [];
+  const feedback = response.promptFeedback;
+  if (feedback?.blockReason) {
+    details.push(`prompt blocked: ${feedback.blockReason}${feedback.blockReasonMessage ? ` (${feedback.blockReasonMessage})` : ''}`);
+  }
+  const candidate = response.candidates?.[0];
+  if (!candidate && !feedback?.blockReason) details.push('no candidates returned');
+  if (candidate?.finishReason) details.push(`finishReason: ${candidate.finishReason}`);
+  if (candidate?.finishMessage) details.push(`finishMessage: ${candidate.finishMessage}`);
+  const text = (candidate?.content?.parts ?? []).map((part) => part.text ?? '').join(' ').trim();
+  if (text) details.push(`model text: ${text.slice(0, 500)}`);
+  return `No image data found in response${details.length ? ` (${details.join('; ')})` : ''}`;
+}
 
 const SUPPORTED_MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -119,7 +149,9 @@ export class GeminiImageGenerator {
       model,
       contents,
       config: {
-        responseModalities: ['IMAGE'],
+        // TEXT lets the model explain a refusal instead of returning an empty image part.
+        responseModalities: ['TEXT', 'IMAGE'],
+        safetySettings: SAFETY_SETTINGS,
         imageConfig: {
           aspectRatio,
           imageSize: this.getImageSizeForGemini(imageSize),
@@ -166,6 +198,6 @@ export class GeminiImageGenerator {
       }
     }
 
-    throw new Error('No image data found in response');
+    throw new Error(describeMissingImage(response));
   }
 }
